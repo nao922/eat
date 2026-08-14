@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ルートグルメ検索</title>
+<style>
+  :root {
+    --ink: #0E1420;
+    --route: #FFB454;
+    --dest: #FF6B6B;
+    --start: #6FE3D0;
+    --paper: #F6F3EC;
+    --text-ink: #1B1F27;
+    --gold: #E0A100;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif; }
+  #app { display: flex; flex-direction: column; height: 100vh; background: var(--ink); overflow: hidden; }
+
+  .header { padding: 12px 16px 8px; flex-shrink: 0; }
+  .eyebrow { font-size: 11px; letter-spacing: 0.16em; color: rgba(255,255,255,0.45); font-weight: 600; margin-bottom: 8px; }
+  .input-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .input-box { display: flex; align-items: center; flex: 1; gap: 8px; border-radius: 16px; padding: 0 12px; background: rgba(255,255,255,0.08); height: 40px; }
+  .input-box.dest { height: 44px; }
+  .input-box input { flex: 1; background: transparent; border: none; outline: none; font-size: 14px; color: #fff; }
+  .icon-dot { width: 10px; height: 10px; border-radius: 999px; flex-shrink: 0; }
+  .search-btn { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 16px; background: var(--route); border: none; cursor: pointer; flex-shrink: 0; }
+  .route-info { margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.55); }
+  .route-error { margin-top: 8px; font-size: 12px; color: var(--dest); }
+
+  .map-wrap { position: relative; flex: 1; min-height: 0; }
+  #map { position: absolute; inset: 0; }
+  .map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.5); font-size: 13px; text-align:center; padding:0 24px; }
+
+  .legend { position: absolute; top: 10px; right: 10px; background: rgba(14,20,32,0.75); border-radius: 12px; padding: 8px 10px; display: none; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: rgba(255,255,255,0.75); margin-bottom: 2px; }
+  .legend-dot { width: 7px; height: 7px; border-radius: 999px; }
+
+  .count-badge { position: absolute; bottom: 12px; left: 12px; background: rgba(14,20,32,0.75); color: #fff; font-size: 12px; padding: 6px 12px; border-radius: 999px; display: none; }
+  .fab-row { position: absolute; bottom: 12px; right: 12px; display: none; gap: 8px; }
+  .fab { display: flex; align-items: center; gap: 6px; padding: 10px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+  .fab-filter { background: var(--paper); color: var(--text-ink); }
+  .fab-scene { background: #2A3346; color: #fff; }
+  .fab-scene.active { background: var(--route); color: var(--ink); }
+  .filter-count { background: var(--route); color: var(--ink); border-radius: 999px; font-size: 10px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+
+  .backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.35); z-index: 30; display: none; }
+  .sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--paper); color: var(--text-ink); border-radius: 20px 20px 0 0; padding: 16px 18px 22px; z-index: 31; max-height: 76%; overflow-y: auto; display: none; animation: sheetUp 0.25s ease-out; }
+  @keyframes sheetUp { from { transform: translateY(100%);} to { transform: translateY(0);} }
+  .sheet-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .sheet-title { font-weight: 700; font-size: 15px; }
+  .sheet-close { background: none; border: none; cursor: pointer; padding: 0; }
+
+  .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; color: #fff; }
+  .badge-outline { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(27,31,39,0.25); color: var(--text-ink); }
+  .rating-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .info-row { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; margin-bottom: 6px; }
+  .note { margin-top: 14px; font-size: 11px; color: rgba(27,31,39,0.4); }
+
+  .filter-group { margin-bottom: 20px; }
+  .filter-label { font-size: 12px; font-weight: 700; margin-bottom: 6px; color: rgba(27,31,39,0.6); }
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 500; border: 1px solid rgba(27,31,39,0.18); background: transparent; color: var(--text-ink); cursor: pointer; }
+  .chip.active { border-color: transparent; color: #fff; }
+  .apply-btn { width: 100%; border: none; border-radius: 16px; background: var(--text-ink); color: #fff; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .suggestions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+  .suggestion-chip { padding: 6px 12px; border-radius: 999px; font-size: 12px; background: rgba(255,255,255,0.08); color: #fff; border: none; cursor: pointer; }
+  .empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 32px; text-align: center; }
+  .empty-text { color: rgba(255,255,255,0.55); font-size: 14px; margin-top: 10px; }
+
+  .scene-intro { font-size: 12px; color: rgba(27,31,39,0.6); margin-bottom: 12px; line-height: 1.5; }
+  .rec-card { border: 1px solid rgba(27,31,39,0.12); border-radius: 14px; padding: 12px; margin-bottom: 10px; cursor: pointer; }
+  .rec-card:active { background: rgba(27,31,39,0.04); }
+  .rec-rank { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; background: var(--route); color: var(--ink); font-size: 11px; font-weight: 700; margin-right: 6px; }
+  .rec-name { font-weight: 700; font-size: 14px; }
+  .rec-reason { font-size: 12px; color: rgba(27,31,39,0.6); margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="eyebrow">ROUTE GOURMET · Google Maps 連携版</div>
+    <div class="input-row">
+      <div class="input-box">
+        <span class="icon-dot" style="background:var(--start)"></span>
+        <input id="originInput" placeholder="出発地を入力（空欄で現在地）" />
+      </div>
+    </div>
+    <div class="input-row">
+      <div class="input-box dest">
+        <span class="icon-dot" style="background:var(--dest)"></span>
+        <input id="destInput" placeholder="目的地を入力（例：渋谷駅）" />
+      </div>
+      <button class="search-btn" id="searchBtn">▶</button>
+    </div>
+    <div class="route-info" id="routeInfo" style="display:none;"></div>
+    <div class="route-error" id="routeError" style="display:none;"></div>
+  </div>
+
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="map-loading" id="mapLoading">地図を読み込み中…</div>
+    <div class="empty-state" id="emptyState" style="display:none;">
+      <div class="empty-text">目的地を入力するとルートと周辺の飲食店を表示します</div>
+      <div class="suggestions" id="suggestions"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="count-badge" id="countBadge"></div>
+    <div class="fab-row" id="fabRow">
+      <button class="fab fab-scene" id="sceneFab">✨ シーンで探す</button>
+      <button class="fab fab-filter" id="filterFab">☰ フィルター <span class="filter-count" id="filterCount" style="display:none;">0</span></button>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop"></div>
+  <div class="sheet" id="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title" id="sheetTitle">フィルター</div>
+      <button class="sheet-close" id="sheetClose">✕</button>
+    </div>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+
+<script>
+/* ---------------- config ---------------- */
+const GOOGLE_MAPS_API_KEY = "AIzaSyCreItoOPEfB6lBo5RZpc6oTNQx4XPAWl4";
+const GENRES = ["和食", "洋食", "イタリアン", "中華", "その他"];
+const GENRE_COLORS = { "和食": "#E2572B", "洋食": "#4A90D9", "イタリアン": "#4FA876", "中華": "#EFB01F", "その他": "#9B8AA6" };
+const GENRE_KEYWORDS = {
+  "和食": ["寿司","蕎麦","そば","うどん","天ぷら","天麩羅","居酒屋","和食","割烹","定食","焼肉","焼鳥","とんかつ","丼","懐石","日本料理","すき焼き","しゃぶしゃぶ","うなぎ","鰻"],
+  "イタリアン": ["イタリア","パスタ","ピザ","pizza","pasta","トラットリア","リストランテ"],
+  "中華": ["中華","餃子","担々","麻婆","チャーハン","中国","飲茶","北京","四川","上海"],
+  "洋食": ["洋食","ハンバーグ","ステーキ","カレー","ビストロ","ダイニング","バル","グリル","洋風","フレンチ","french","steak","bistro","カフェ","cafe"],
+};
+const CHAIN_KEYWORDS = ["マクドナルド","スターバックス","サイゼリヤ","ガスト","すき家","吉野家","松屋","餃子の王将","バーミヤン","リンガーハット","日高屋","やよい軒","大戸屋","ジョナサン","ロイヤルホスト","びっくりドンキー","ジョリーパスタ","カプリチョーザ","ドトール","タリーズ","かつや","天下一品","丸亀製麺","はなまるうどん","なか卯","ケンタッキー","モスバーガー","ロッテリア","デニーズ","ココス","くら寿司","スシロー","はま寿司","かっぱ寿司","銀のさら","ピザハット","ドミノ","CoCo壱番屋","王将"];
+const DARK_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#151b28" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#151b28" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#8a93a6" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#232c3d" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#6b7488" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0b1220" }] },
+  { featureType: "poi", elementType: "geometry", stylers: [{ color: "#1a2233" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#16241c" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#2a3346" }] },
+  { featureType: "transit", stylers: [{ visibility: "off" }] },
+];
+const SCENES = [
+  { key: "izakaya", label: "🍻 飲み会", intro: "賑やかで実績のあるお店を中心に、飲み会向きのお店をスコアリングして並べています。" },
+  { key: "date", label: "💕 デート", intro: "落ち着いた個人店・高評価のお店を優先して、デート向きのお店をスコアリングして並べています。" },
+  { key: "meal", label: "🍚 ご飯", intro: "ルートから近く評価の良いお店を優先して、気軽なご飯向きのお店をスコアリングして並べています。" },
+];
+
+function classifyGenre(name) {
+  for (const g of ["和食", "イタリアン", "中華", "洋食"]) {
+    if (GENRE_KEYWORDS[g].some(k => name.includes(k))) return g;
+  }
+  return "その他";
+}
+function isChainName(name) { return CHAIN_KEYWORDS.some(k => name.includes(k)); }
+
+/* ---------------- scene scoring (rule-based, runs locally — no external AI call) ---------------- */
+function sceneScore(r, scene) {
+  let score = (r.rating || 0);
+  score += Math.min((r.reviewCount || 0) / 150, 2.5);
+  score -= r.walkMinutes / 15;
+  if (scene === "izakaya") {
+    if (["和食", "中華"].includes(r.genre)) score += 2.5;
+    if (!r.isChain) score += 1;
+  } else if (scene === "date") {
+    if (["イタリアン", "洋食"].includes(r.genre)) score += 2.5;
+    if (!r.isChain) score += 1.5;
+    if ((r.rating || 0) >= 4) score += 1;
+  } else if (scene === "meal") {
+    if (r.walkMinutes <= 10) score += 1.5;
+  }
+  return score;
+}
+function sceneReason(r, scene) {
+  const parts = [];
+  if (scene === "izakaya") {
+    if (["和食", "中華"].includes(r.genre)) parts.push("賑やかな飲み会向けのジャンル");
+    if (!r.isChain) parts.push("個人店ならではの雰囲気");
+    if ((r.reviewCount || 0) > 150) parts.push("レビュー数が多く実績あり");
+  } else if (scene === "date") {
+    if (["イタリアン", "洋食"].includes(r.genre)) parts.push("デート向きのジャンル");
+    if (!r.isChain) parts.push("落ち着いた個人店");
+    if ((r.rating || 0) >= 4) parts.push("評価が高く安心");
+  } else if (scene === "meal") {
+    if (r.walkMinutes <= 10) parts.push("ルートからすぐ");
+    if ((r.rating || 0) >= 3.8) parts.push("評価良好");
+  }
+  if (parts.length === 0) parts.push("評価・距離のバランスが良い");
+  return parts.slice(0, 2).join("・");
+}
+
+/* ---------------- state ---------------- */
+let map, directionsRenderer, placesService;
+let originCoords = null;
+let allPlaces = [];
+let markers = [];
+let endpointMarkers = [];
+let filters = { distance: null, minRating: null, genres: new Set(GENRES), chain: "all" };
+let activeScene = null;
+
+/* ---------------- init ---------------- */
+window.initApp = function () {
+  document.getElementById("mapLoading").style.display = "none";
+  document.getElementById("emptyState").style.display = "flex";
+
+  const suggestions = ["東京駅", "渋谷", "新宿", "横浜", "京都駅"];
+  const box = document.getElementById("suggestions");
+  suggestions.forEach(s => {
+    const b = document.createElement("button");
+    b.className = "suggestion-chip";
+    b.textContent = s;
+    b.onclick = () => { document.getElementById("destInput").value = s; runSearch(); };
+    box.appendChild(b);
+  });
+
+  map = new google.maps.Map(document.getElementById("map"), {
+    center: { lat: 35.681236, lng: 139.767125 },
+    zoom: 14,
+    disableDefaultUI: true,
+    zoomControl: true,
+    styles: DARK_MAP_STYLE,
+  });
+  directionsRenderer = new google.maps.DirectionsRenderer({
+    map, suppressMarkers: true,
+    polylineOptions: { strokeColor: "#FFB454", strokeWeight: 4, strokeOpacity: 0.9 },
+  });
+  placesService = new google.maps.places.PlacesService(map);
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => { originCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude }; },
+      () => {}, { timeout: 5000 }
+    );
+  }
+
+  document.getElementById("searchBtn").onclick = runSearch;
+  document.getElementById("destInput").addEventListener("keydown", e => { if (e.key === "Enter") runSearch(); });
+  document.getElementById("filterFab").onclick = () => openFilterSheet();
+  document.getElementById("sceneFab").onclick = () => openSceneSheet();
+  document.getElementById("sheetClose").onclick = closeSheet;
+  document.getElementById("backdrop").onclick = closeSheet;
+};
+
+window.onGoogleMapsError = function () {
+  document.getElementById("mapLoading").textContent = "Google Mapsの読み込みに失敗しました。APIキーの制限・有効化されているAPIをご確認ください。";
+};
+
+/* ---------------- search ---------------- */
+function nearbySearchAt(location, radius) {
+  return new Promise(resolve => {
+    placesService.nearbySearch({ location, radius, type: "restaurant" }, (results, status) => {
+      resolve(status === google.maps.places.PlacesServiceStatus.OK ? (results || []) : []);
+    });
+  });
+}
+
+async function runSearch() {
+  const destVal = document.getElementById("destInput").value.trim();
+  const originVal = document.getElementById("originInput").value.trim();
+  const routeErrorEl = document.getElementById("routeError");
+  const routeInfoEl = document.getElementById("routeInfo");
+  routeErrorEl.style.display = "none";
+  routeInfoEl.style.display = "none";
+
+  if (!destVal) return;
+  const origin = originVal || originCoords;
+  if (!origin) {
+    routeErrorEl.textContent = "出発地が取得できません。出発地を入力するか、位置情報を許可してください。";
+    routeErrorEl.style.display = "block";
+    return;
+  }
+
+  document.getElementById("emptyState").style.display = "none";
+  clearMarkers();
+  allPlaces = [];
+  activeScene = null;
+  closeSheet();
+
+  const directionsService = new google.maps.DirectionsService();
+  const tryRoute = mode => new Promise(resolve => {
+    directionsService.route({ origin, destination: destVal, travelMode: google.maps.TravelMode[mode] }, (result, status) => resolve({ result, status }));
+  });
+
+  let { result, status } = await tryRoute("WALKING");
+  let usedMode = "WALKING";
+  if (status !== "OK") { ({ result, status } = await tryRoute("DRIVING")); usedMode = "DRIVING"; }
+  if (status !== "OK" || !result) {
+    routeErrorEl.textContent = "ルートが見つかりませんでした。地名や住所を確認してください。";
+    routeErrorEl.style.display = "block";
+    return;
+  }
+
+  directionsRenderer.setDirections(result);
+  const leg = result.routes[0].legs[0];
+  routeInfoEl.textContent = (usedMode === "WALKING" ? "徒歩" : "車") + "ルート・" + leg.distance.text + "・約" + leg.duration.text;
+  routeInfoEl.style.display = "block";
+
+  endpointMarkers.push(new google.maps.Marker({
+    position: leg.start_location, map,
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#6FE3D0", fillOpacity: 1, strokeColor: "#0E1420", strokeWeight: 2 },
+  }));
+  endpointMarkers.push(new google.maps.Marker({
+    position: leg.end_location, map,
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#FF6B6B", fillOpacity: 1, strokeColor: "#0E1420", strokeWeight: 2 },
+  }));
+
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend(leg.start_location); bounds.extend(leg.end_location);
+  map.fitBounds(bounds, 60);
+
+  const path = result.routes[0].overview_path;
+  const sampleCount = Math.min(6, path.length);
+  const sampleIdx = [...new Set(Array.from({ length: sampleCount }, (_, i) => Math.round((i / (sampleCount - 1 || 1)) * (path.length - 1))))];
+  const samplePoints = sampleIdx.map(i => path[i]);
+
+  const RADIUS_M = 1600;
+  const resultsArrays = await Promise.all(samplePoints.map(pt => nearbySearchAt(pt, RADIUS_M)));
+  const merged = new Map();
+  resultsArrays.flat().forEach(p => { if (p.place_id && !merged.has(p.place_id)) merged.set(p.place_id, p); });
+
+  allPlaces = [...merged.values()].slice(0, 45).map(p => {
+    const loc = p.geometry.location;
+    let minDist = Infinity;
+    samplePoints.forEach(pt => {
+      const d = google.maps.geometry.spherical.computeDistanceBetween(loc, pt);
+      if (d < minDist) minDist = d;
+    });
+    return {
+      id: p.place_id, name: p.name, genre: classifyGenre(p.name), isChain: isChainName(p.name),
+      rating: p.rating || 0, reviewCount: p.user_ratings_total || 0,
+      walkMinutes: Math.max(1, Math.round(minDist / 80)),
+      lat: loc.lat(), lng: loc.lng(),
+    };
+  });
+
+  renderMarkers();
+  document.getElementById("legend").style.display = "block";
+  updateLegend();
+}
+
+/* ---------------- filtering / markers ---------------- */
+function filteredPlaces() {
+  return allPlaces.filter(r => {
+    if (filters.distance && r.walkMinutes > filters.distance) return false;
+    if (filters.minRating && r.rating < filters.minRating) return false;
+    if (!filters.genres.has(r.genre)) return false;
+    if (filters.chain === "chain" && !r.isChain) return false;
+    if (filters.chain === "non-chain" && r.isChain) return false;
+    return true;
+  });
+}
+function recommendedForScene() {
+  if (!activeScene) return [];
+  return filteredPlaces()
+    .map(r => ({ ...r, score: sceneScore(r, activeScene), reason: sceneReason(r, activeScene) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+}
+function clearMarkers() {
+  markers.forEach(m => m.setMap(null)); markers = [];
+  endpointMarkers.forEach(m => m.setMap(null)); endpointMarkers = [];
+}
+function renderMarkers() {
+  markers.forEach(m => m.setMap(null)); markers = [];
+  const list = filteredPlaces();
+  const recIds = new Set(recommendedForScene().map(r => r.id));
+  markers = list.map(r => {
+    const isRec = recIds.has(r.id);
+    const marker = new google.maps.Marker({
+      position: { lat: r.lat, lng: r.lng }, map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: isRec ? 10 : 7,
+        fillColor: GENRE_COLORS[r.genre],
+        fillOpacity: 1,
+        strokeColor: isRec ? "#E0A100" : "#151b28",
+        strokeWeight: isRec ? 3 : 2,
+      },
+      zIndex: isRec ? 999 : 1,
+    });
+    marker.addListener("click", () => openDetail(r));
+    return marker;
+  });
+  const countEl = document.getElementById("countBadge");
+  countEl.textContent = list.length + "件のお店を表示中";
+  countEl.style.display = "block";
+  document.getElementById("fabRow").style.display = "flex";
+  document.getElementById("sceneFab").classList.toggle("active", !!activeScene);
+  updateFilterCount();
+}
+function updateLegend() {
+  const legend = document.getElementById("legend");
+  legend.innerHTML = "";
+  GENRES.forEach(g => {
+    const row = document.createElement("div");
+    row.className = "legend-item";
+    row.innerHTML = '<span class="legend-dot" style="background:' + GENRE_COLORS[g] + '"></span>' + g;
+    legend.appendChild(row);
+  });
+}
+function updateFilterCount() {
+  const n = (filters.distance ? 1 : 0) + (filters.minRating ? 1 : 0) + (filters.genres.size < GENRES.length ? 1 : 0) + (filters.chain !== "all" ? 1 : 0);
+  const el = document.getElementById("filterCount");
+  el.textContent = n;
+  el.style.display = n > 0 ? "inline-flex" : "none";
+}
+
+/* ---------------- detail sheet ---------------- */
+function openDetail(r) {
+  document.getElementById("sheetTitle").textContent = r.name;
+  const body = document.getElementById("sheetBody");
+  const stars = [1,2,3,4,5].map(n => (r.rating >= n - 0.25 ? "★" : "☆")).join("");
+  const recBadge = activeScene && recommendedForScene().some(x => x.id === r.id)
+    ? '<span class="badge" style="background:' + '#E0A100' + '">シーンおすすめ</span>' : "";
+  body.innerHTML = `
+    <div class="badge-row">
+      <span class="badge" style="background:${GENRE_COLORS[r.genre]}">${r.genre}</span>
+      <span class="badge-outline">${r.isChain ? "チェーン店" : "個人店"}</span>
+      ${recBadge}
+    </div>
+    <div class="rating-row">
+      <span style="color:#E0A100;letter-spacing:1px;">${stars}</span>
+      <span style="font-size:13px;font-weight:600;">${r.rating ? r.rating.toFixed(1) : "評価なし"}</span>
+      <span style="font-size:12px;color:rgba(27,31,39,0.55);">（${r.reviewCount}件のレビュー）</span>
+    </div>
+    <div class="info-row">🚶 ルート沿いの地点から徒歩約${r.walkMinutes}分</div>
+    <div class="info-row" id="addressRow">📍 住所を取得中…</div>
+    <div class="note">※ ジャンル・チェーン判定は店名からの簡易推定です。実際と異なる場合があります。</div>
+  `;
+  openSheetRaw();
+
+  placesService.getDetails({ placeId: r.id, fields: ["formatted_address"] }, (res, status) => {
+    if (status === google.maps.places.PlacesServiceStatus.OK) {
+      const el = document.getElementById("addressRow");
+      if (el) el.textContent = "📍 " + res.formatted_address;
+    }
+  });
+}
+
+/* ---------------- filter sheet ---------------- */
+function openFilterSheet() {
+  document.getElementById("sheetTitle").textContent = "フィルター";
+  const body = document.getElementById("sheetBody");
+  body.innerHTML = `
+    <div class="filter-group">
+      <div class="filter-label">① ルートからの距離（徒歩）</div>
+      <div class="chip-row" id="distChips"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">② Googleレビュー（最低評価）</div>
+      <div class="chip-row" id="ratingChips"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">③ 種類</div>
+      <div class="chip-row" id="genreChips"></div>
+    </div>
+    <div class="filter-group">
+      <div class="filter-label">④ チェーン店</div>
+      <div class="chip-row" id="chainChips"></div>
+    </div>
+    <button class="apply-btn" id="applyBtn"></button>
+  `;
+  buildFilterChips();
+  document.getElementById("applyBtn").onclick = closeSheet;
+  openSheetRaw();
+}
+function buildFilterChips() {
+  const distBox = document.getElementById("distChips");
+  distBox.innerHTML = "";
+  [5,10,15,30].forEach(m => {
+    const b = document.createElement("button");
+    b.className = "chip" + (filters.distance === m ? " active" : "");
+    b.style.background = filters.distance === m ? "#FFB454" : "transparent";
+    b.textContent = "徒歩" + m + "分";
+    b.onclick = () => { filters.distance = filters.distance === m ? null : m; renderMarkers(); openFilterSheet(); };
+    distBox.appendChild(b);
+  });
+
+  const ratingBox = document.getElementById("ratingChips");
+  ratingBox.innerHTML = "";
+  [1,2,3,4,5].forEach(n => {
+    const b = document.createElement("button");
+    b.className = "chip" + (filters.minRating === n ? " active" : "");
+    b.style.background = filters.minRating === n ? "#E0A100" : "transparent";
+    b.textContent = "星" + n + "以上";
+    b.onclick = () => { filters.minRating = filters.minRating === n ? null : n; renderMarkers(); openFilterSheet(); };
+    ratingBox.appendChild(b);
+  });
+
+  const genreBox = document.getElementById("genreChips");
+  genreBox.innerHTML = "";
+  GENRES.forEach(g => {
+    const b = document.createElement("button");
+    const active = filters.genres.has(g);
+    b.className = "chip" + (active ? " active" : "");
+    b.style.background = active ? GENRE_COLORS[g] : "transparent";
+    b.textContent = g;
+    b.onclick = () => {
+      if (filters.genres.has(g)) { if (filters.genres.size > 1) filters.genres.delete(g); }
+      else filters.genres.add(g);
+      renderMarkers(); openFilterSheet();
+    };
+    genreBox.appendChild(b);
+  });
+
+  const chainBox = document.getElementById("chainChips");
+  chainBox.innerHTML = "";
+  [["all","すべて"],["chain","チェーン店"],["non-chain","チェーン店ではない"]].forEach(([key,label]) => {
+    const b = document.createElement("button");
+    const active = filters.chain === key;
+    b.className = "chip" + (active ? " active" : "");
+    b.style.background = active ? "#1B1F27" : "transparent";
+    b.textContent = label;
+    b.onclick = () => { filters.chain = key; renderMarkers(); openFilterSheet(); };
+    chainBox.appendChild(b);
+  });
+
+  document.getElementById("applyBtn").textContent = filteredPlaces().length + "件を表示";
+}
+
+/* ---------------- scene sheet ---------------- */
+function openSceneSheet() {
+  document.getElementById("sheetTitle").textContent = "シーンで探す";
+  const body = document.getElementById("sheetBody");
+  body.innerHTML = `
+    <div class="chip-row" id="sceneChips" style="margin-bottom:10px;"></div>
+    <div class="scene-intro" id="sceneIntro"></div>
+    <div id="recList"></div>
+  `;
+  const sceneChips = document.getElementById("sceneChips");
+  SCENES.forEach(s => {
+    const b = document.createElement("button");
+    const active = activeScene === s.key;
+    b.className = "chip" + (active ? " active" : "");
+    b.style.background = active ? "#FFB454" : "transparent";
+    b.textContent = s.label;
+    b.onclick = () => { activeScene = activeScene === s.key ? null : s.key; renderMarkers(); openSceneSheet(); };
+    sceneChips.appendChild(b);
+  });
+
+  const introEl = document.getElementById("sceneIntro");
+  const recListEl = document.getElementById("recList");
+  if (!activeScene) {
+    introEl.textContent = allPlaces.length
+      ? "シーンを選ぶと、条件に合うお店をスコアリングして上位5件をおすすめします（店舗データからのルールベース判定・外部AIへの問い合わせは行いません）。"
+      : "先にルートを検索してください。";
+    recListEl.innerHTML = "";
+    return;
+  }
+  const scene = SCENES.find(s => s.key === activeScene);
+  introEl.textContent = scene.intro + "（ルールベースのスコアリングによる推薦です）";
+  const recs = recommendedForScene();
+  recListEl.innerHTML = "";
+  if (recs.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "scene-intro";
+    empty.textContent = "現在のフィルター条件に合うお店が見つかりませんでした。フィルターを緩めてみてください。";
+    recListEl.appendChild(empty);
+    return;
+  }
+  recs.forEach((r, idx) => {
+    const card = document.createElement("div");
+    card.className = "rec-card";
+    card.innerHTML = `
+      <div><span class="rec-rank">${idx + 1}</span><span class="rec-name">${r.name}</span></div>
+      <div class="rec-reason">${r.genre} ・ ★${r.rating ? r.rating.toFixed(1) : "-"} ・ 徒歩${r.walkMinutes}分 ・ ${r.reason}</div>
+    `;
+    card.onclick = () => openDetail(r);
+    recListEl.appendChild(card);
+  });
+}
+
+function openSheetRaw() {
+  document.getElementById("backdrop").style.display = "block";
+  document.getElementById("sheet").style.display = "block";
+}
+function closeSheet() {
+  document.getElementById("backdrop").style.display = "none";
+  document.getElementById("sheet").style.display = "none";
+}
+</script>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCreItoOPEfB6lBo5RZpc6oTNQx4XPAWl4&libraries=places,geometry&callback=initApp&loading=async"
+  onerror="window.onGoogleMapsError && window.onGoogleMapsError()"
+  async defer></script>
+</body>
+</html>
